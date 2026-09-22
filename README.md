@@ -1,26 +1,28 @@
-# Mini AI Knowledge Assistant
+# Teacher's Question Bank Assistant
 
-A Streamlit-based RAG application for asking grounded questions about uploaded PDF documents. Each person signs in with Supabase, receives isolated local document/vector storage, and has their chat history saved to their own Supabase account.
+A Streamlit-based RAG application for generating rubric-constrained exam papers from previous question papers. Each teacher signs in with Supabase and receives isolated local document/vector storage.
 
 ## What it does
 
 - Creates accounts and signs users in with Supabase Auth.
-- Lets each signed-in user upload one or more PDFs from the sidebar.
-- Extracts PDF pages and creates semantic chunks (roughly 350-1,200 characters) using local MiniLM embeddings.
+- Lets each signed-in teacher upload a syllabus and previous question papers.
+- Extracts individual questions and tags them with topic, marks, Bloom's level, source year, and source paper.
 - Stores embeddings in a persistent, user-specific Chroma collection.
-- Retrieves direct matches plus diverse MMR results, then asks Gemini to answer only from the retrieved context.
-- Shows the source file, page, section, relevance score (when available), and excerpt for every answer.
-- Persists questions, answers, and source metadata in Supabase so a user's history is restored after they sign in again.
-- Allows users to remove an uploaded PDF and its corresponding indexed chunks.
+- Retrieves questions using mark, topic, and Bloom's metadata filters combined with semantic similarity.
+- Generates new questions with Gemini when the bank lacks a suitable match, then rejects near-duplicates.
+- Validates generated papers against marks, topic coverage, Bloom's targets, and duplicate checks.
+- Supports per-question editing, regeneration, removal, rubric review, and approved plain-text export.
+- Allows users to remove an uploaded paper and its corresponding indexed questions.
 
 ## Architecture
 
 | Component | Role |
 | --- | --- |
-| `app.py` | Streamlit UI, authentication flow, upload/remove controls, and chat display. |
-| `database.py` | Supabase Auth plus per-user chat-message reads and writes. |
-| `ingest.py` | PDF loading, semantic chunking, MiniLM embeddings, and persistent Chroma storage. |
-| `rag_chain.py` | Vector retrieval, context construction, and Gemini answer generation. |
+| `app.py` | Streamlit UI, authentication, ingestion, paper generation, review, and export. |
+| `database.py` | Supabase Auth and per-user configuration. |
+| `ingest.py` | Question extraction, LLM tagging, embeddings, and persistent Chroma storage. |
+| `rag_chain.py` | Metadata-filtered retrieval, few-shot question generation, and duplicate checks. |
+| `rubric_checker.py` | Structured validation of draft papers against teacher constraints. |
 | `supabase_schema.sql` | `chat_messages` table, index, RLS, and per-user policies. |
 
 Documents and Chroma data are stored locally in `data/users/<user-id>/` and `chroma_db/users/<user-id>/`. Chat history is stored remotely in Supabase.
@@ -83,15 +85,15 @@ Documents and Chroma data are stored locally in `data/users/<user-id>/` and `chr
    streamlit run app.py
    ```
 
-6. Create an account, sign in, add PDFs in the sidebar, select **Process documents**, and start asking questions. If `GOOGLE_API_KEY` is not in `.env`, enter it in the sidebar for the current session.
+6. Create an account, sign in, upload a syllabus and previous papers, select **Process question papers**, define the rubric, and generate a draft. If `GOOGLE_API_KEY` is not in `.env`, enter it in the sidebar for the current session.
 
 ## Retrieval behavior
 
-The app uses `sentence-transformers/all-MiniLM-L6-v2` locally for both indexing and querying. It keeps chunk IDs stable, so reprocessing the same content does not add duplicate vectors. For each question it retrieves up to 20 direct matches, retains the best four, then adds diverse results using maximal marginal relevance, up to eight source chunks total. Gemini (`gemini-3.6-flash`) generates the final response with a prompt that requires it to stay within that context.
+The app uses `sentence-transformers/all-MiniLM-L6-v2` locally for indexing and querying. It keeps question IDs stable, so reprocessing the same content does not add duplicate vectors. For each paper slot it applies Chroma metadata filters, retrieves up to four examples, and asks Gemini (`gemini-3.6-flash`) to create a new question only when an exact match is unavailable. Generated questions are checked against existing questions in the topic with a 0.92 embedding-similarity threshold.
 
 ## Notes and limitations
 
-- Document vectors and PDFs remain on the machine running the app; they are not stored in Supabase.
+- Question vectors and PDFs remain on the machine running the app; they are not stored in Supabase.
 - Initial local embedding-model download and indexing can take time, especially for large PDFs.
 - The current ingestion work happens during the Streamlit request. Large-document background processing is not implemented yet.
 - Keep `.env` and `.streamlit/secrets.toml` private; both are ignored by Git.
@@ -99,7 +101,7 @@ The app uses `sentence-transformers/all-MiniLM-L6-v2` locally for both indexing 
 ## Development checks
 
 ```bash
-python -m py_compile app.py database.py ingest.py rag_chain.py
+python -m py_compile app.py database.py ingest.py rag_chain.py rubric_checker.py
 ```
 
 ## AI-use disclosure
