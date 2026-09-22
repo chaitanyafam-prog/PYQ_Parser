@@ -1,6 +1,6 @@
 # Teacher's Question Bank Assistant
 
-A Streamlit-based RAG application for generating rubric-constrained exam papers from previous question papers. Each teacher signs in with Supabase and receives isolated local document/vector storage.
+A Streamlit app that turns a teacher's previous question papers into a searchable question bank and builds rubric-constrained draft exam papers. Each teacher signs in with Supabase and receives isolated local document and vector storage.
 
 ## What it does
 
@@ -14,6 +14,16 @@ A Streamlit-based RAG application for generating rubric-constrained exam papers 
 - Supports per-question editing, regeneration, removal, rubric review, and approved plain-text export.
 - Allows users to remove an uploaded paper and its corresponding indexed questions.
 
+## Typical workflow
+
+1. Create an account and sign in.
+2. Upload an optional syllabus PDF and one or more previous question papers, then select **Process question papers**.
+3. Enter the required topics, mark distribution, student year, and minimum Bloom's-level counts.
+4. Generate a draft, review or edit individual questions, and resolve any rubric warnings.
+5. Approve a valid draft and download it as a plain-text exam paper.
+
+For a mark distribution, use comma-separated entries such as `3 questions x 2 marks, 2 questions x 5 marks`. The number of requested questions is determined by this distribution; `Total marks` is checked by the rubric validator.
+
 ## Architecture
 
 | Component | Role |
@@ -25,7 +35,7 @@ A Streamlit-based RAG application for generating rubric-constrained exam papers 
 | `rubric_checker.py` | Structured validation of draft papers against teacher constraints. |
 | `supabase_schema.sql` | `chat_messages` table, index, RLS, and per-user policies. |
 
-Documents and Chroma data are stored locally in `data/users/<user-id>/` and `chroma_db/users/<user-id>/`. Chat history is stored remotely in Supabase.
+Documents and Chroma data are stored locally in `data/users/<user-id>/` and `chroma_db/users/<user-id>/`. Supabase provides authentication; the supplied schema also creates a per-user message table for integrations that use the database helpers.
 
 ## Prerequisites
 
@@ -89,7 +99,7 @@ Documents and Chroma data are stored locally in `data/users/<user-id>/` and `chr
 
 ## Retrieval behavior
 
-The app uses `sentence-transformers/all-MiniLM-L6-v2` locally for indexing and querying. It keeps question IDs stable, so reprocessing the same content does not add duplicate vectors. For each paper slot it applies Chroma metadata filters, retrieves up to four examples, and asks Gemini (`gemini-3.6-flash`) to create a new question only when an exact match is unavailable. Generated questions are checked against existing questions in the topic with a 0.92 embedding-similarity threshold.
+The app uses `sentence-transformers/all-MiniLM-L6-v2` locally for indexing and querying. It keeps question IDs stable, so reprocessing the same content does not add duplicate vectors. For each requested paper slot it filters Chroma by marks, topic, and Bloom's level, then retrieves up to four semantically relevant examples. If no matching stored question is available, Gemini (`gemini-3.6-flash`) generates a new question from those examples. Generated questions are checked against both the draft and the stored questions in the relevant topic using a 0.92 embedding-similarity threshold.
 
 ## Notes and limitations
 
