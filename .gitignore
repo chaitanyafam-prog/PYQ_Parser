@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+assistant_data.sqlite3
+*.pyc
+.streamlit/secrets.toml
+chroma_db/
+data/

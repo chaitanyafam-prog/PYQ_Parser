@@ -1,0 +1,12 @@
+langchain
+langchain-community
+langchain-huggingface
+langchain-chroma
+langchain-google-genai
+chromadb
+sentence-transformers
+pypdf
+streamlit
+python-dotenv
+supabase==2.31.0
+st-supabase-connection
