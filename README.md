@@ -1,4 +1,4 @@
-# Teacher's Question Bank Assistant
+# PYQ Parser
 
 A Streamlit app that turns a teacher's previous question papers into a searchable question bank and builds rubric-constrained draft exam papers. Each teacher signs in with Supabase and receives isolated local document and vector storage.
 
