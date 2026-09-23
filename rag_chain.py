@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from ingest import BLOOM_LEVELS, get_embeddings, get_vector_store
+from ingest import BLOOM_LEVELS, get_embeddings, get_vector_store, parse_model_object
 
 RETRIEVAL_VERSION = "question-bank-generation-v1"
 DUPLICATE_SIMILARITY_THRESHOLD = 0.92
@@ -63,11 +63,7 @@ def _as_readable_text(content) -> str:
 
 
 def _as_json_object(content) -> dict:
-    text = _as_readable_text(content)
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("The generation model did not return a JSON object.")
-    return json.loads(match.group(0))
+    return parse_model_object(_as_readable_text(content))
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:

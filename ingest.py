@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -129,12 +130,52 @@ Question:
 {question}'''
 
 
-def _json_object(content) -> dict:
+def parse_model_object(content) -> dict:
+    """Extract a mapping from a model response without executing model output.
+
+    Gemini is asked for JSON, but it can occasionally wrap it in Markdown or use
+    Python-style single quotes. ``ast.literal_eval`` supports the latter safely;
+    it never evaluates code.
+    """
     text = content if isinstance(content, str) else str(content)
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("The tagging model did not return a JSON object.")
-    return json.loads(match.group(0))
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        quote = None
+        escaped = False
+        for index in range(start, len(text)):
+            char = text[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                continue
+            if char in ("'", '"'):
+                quote = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : index + 1]
+                    for parser in (json.loads, ast.literal_eval):
+                        try:
+                            value = parser(candidate)
+                        except (SyntaxError, ValueError, json.JSONDecodeError):
+                            continue
+                        if isinstance(value, dict):
+                            return value
+                    break
+        start = text.find("{", start + 1)
+    raise ValueError("The model did not return an object containing the required tags.")
+
+
+def _json_object(content) -> dict:
+    """Backward-compatible name for model-response parsing."""
+    return parse_model_object(content)
 
 
 def _fallback_tags(question: str, metadata: dict) -> dict:
@@ -161,9 +202,14 @@ def tag_questions(questions, syllabus_text: str = "", llm=None):
         metadata = deepcopy(question.metadata)
         tags = _fallback_tags(question.page_content, metadata)
         if llm is not None:
-            response = llm.invoke(_tagging_prompt(question.page_content, syllabus_text, tags["source_year"]))
-            model_tags = _json_object(getattr(response, "content", response))
-            tags.update(model_tags)
+            try:
+                response = llm.invoke(_tagging_prompt(question.page_content, syllabus_text, tags["source_year"]))
+                model_tags = parse_model_object(getattr(response, "content", response))
+                tags.update(model_tags)
+            except ValueError:
+                # A malformed tag should not prevent the teacher from indexing
+                # the remaining questions; the deterministic fallback remains.
+                print("Model returned malformed tags; using fallback tags for one question.")
         bloom = str(tags.get("bloom_level", "Understand")).title()
         metadata.update({
             "topic": str(tags.get("topic", "Unclassified")),
